@@ -8,6 +8,6 @@ visioncli: visioncli.cpp
 	g++ -std=c++1z $< -o $@ 
 
 pwmd: pwmd.cpp
-	g++ -std=c++1z $< -o $@ -lboost_filesystem -lboost_system 
+	g++ -g -std=c++1z $< -o $@ -lboost_filesystem -lboost_system 
 
 

@@ -78,16 +78,17 @@ struct PwmChannel
     static pwm_fun getCurve(std::string const& name)
     {
         static std::map<std::string, pwm_fun> m = {
-            std::make_pair("pwm1", &PwmChannel::pump_curve),
-            std::make_pair("pwm2", &PwmChannel::fan_curve),
+            std::make_pair("pump", &PwmChannel::pump_curve),
+            std::make_pair("fan", &PwmChannel::fan_curve),
         };
         if(m.count(name) == 0)
             throw std::runtime_error("Can't find appropriate fan curve.");
         return m[name];
     }
 
-    PwmChannel(std::string const& name)
+    PwmChannel(std::string const& name, std::string const& type)
         : name(name)
+        , type(type)
         , lastVal(-1)
     {
         fs::path hwmon("/sys/class/hwmon/hwmon0");
@@ -97,18 +98,30 @@ struct PwmChannel
             Log::error() << "Unknown pwm channel: " << name;
             throw std::runtime_error("Bad input");
         }
-        fd = ::open(path.c_str(), 0);
+        fd = ::open(path.c_str(), O_WRONLY);
         if(0 > fd)
             throw system_error(errno, system_category());
-        pwmCurve = PwmChannel::getCurve(name);
+        enableManualControl(hwmon/name);
+        pwmCurve = PwmChannel::getCurve(type);
     }
     ~PwmChannel()
     {
+        abort();
         ::close(fd);
     }
     void setTemperature(double temp)
     {
         setPwmVal(pwmCurve(temp));
+    }
+    void enableManualControl(fs::path path)
+    {
+        path += "_enable";
+        auto f = ::open(path.c_str(), O_WRONLY);
+        if(0 > f)
+            throw system_error(errno, system_category());
+        if(2 != ::write(f, "1", 2))
+            throw system_error(errno, system_category());
+        ::close(f);
     }
     void setPwmVal(int val)
     {
@@ -118,10 +131,14 @@ struct PwmChannel
             Log::info() << name << "::write(" << fd << ", \"" << strval << "\", "
                 << strval.size()+1
                 << ");";
+            if(0 != ::lseek(fd, 0, SEEK_SET))
+                Log::error() << "Failed to seek to beginning of file on FD: " << fd << " - " << strerror(errno);
+            if(strval.size()+1 != ::write(fd, strval.c_str(), strval.size()+1))
+                Log::error() << "Failed to write to FD: " << fd << " - " << strerror(errno);
         }
         lastVal = val;
     }
-    std::string name;
+    std::string name, type;
     int fd;
     int lastVal;
     pwm_fun pwmCurve;
@@ -138,17 +155,21 @@ struct Daemon
         if(!vision)
             throw std::runtime_error("Could not find VISION device!");
         Log::info() << "Found device: " << vision->describe();
-        while(--argc)
+        if(0 == argc % 2)
+            throw std::runtime_error("Expecting <pwm channel> <curve type>");
+        for(int arg = 1; arg < argc; arg += 2)
         {
-            pwm_channels.emplace_back(*++argv);
-            Log::info() << "Opened channel " << pwm_channels.back().name
-                << " on FD: " << pwm_channels.back().fd;
+            std::string channel = *++argv;
+            std::string type = *++argv;
+            pwm_channels.push_back(std::make_shared<PwmChannel>(channel, type));
+            Log::info() << "Opened channel " << pwm_channels.back()->name
+                << " on FD: " << pwm_channels.back()->fd;
         }
         if(pwm_channels.empty())
         {
             throw std::runtime_error("Error: No PWM channels given.");
         }
-        daemonize();
+        //daemonize();
     }
 
     void daemonize()
@@ -189,7 +210,7 @@ struct Daemon
                     //goto pause;
                 }
                 for(auto& channel : pwm_channels)
-                    channel.setTemperature(temp);
+                    channel->setTemperature(temp);
                 lastTemp = temp;
             }
             pause:
@@ -198,7 +219,7 @@ struct Daemon
     }
     Vision* vision;
     double lastTemp;
-    std::vector<PwmChannel> pwm_channels;
+    std::vector<std::shared_ptr<PwmChannel>> pwm_channels;
     Log log;
 };
 
