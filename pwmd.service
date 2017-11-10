@@ -1,0 +1,11 @@
+[Unit]
+Description=Fan and pump control through VISION
+After=lm-sensors.service
+Documentation=man:pwmd(8)
+
+[Service]
+ExecStart=/usr/sbin/pwmd pwm1 pump pwm2 fan
+PIDFile=/var/run/pwmd.pid
+
+[Install]
+WantedBy=multi-user.target

@@ -4,10 +4,13 @@
 #include <cmath>
 #include <cstring>
 #include <functional>
+#include <fstream>
 #include <boost/filesystem.hpp>
 
 #include <time.h>
 #include <syslog.h>
+#include <unistd.h>
+#include <signal.h>
 
 namespace fs = boost::filesystem;
 using boost::system::system_error;
@@ -100,13 +103,12 @@ struct PwmChannel
         }
         fd = ::open(path.c_str(), O_WRONLY);
         if(0 > fd)
-            throw system_error(errno, system_category());
+            throw system_error(errno, system_category(), "open(" + std::string{path.c_str()} + ")");
         enableManualControl(hwmon/name);
         pwmCurve = PwmChannel::getCurve(type);
     }
     ~PwmChannel()
     {
-        abort();
         ::close(fd);
     }
     void setTemperature(double temp)
@@ -118,9 +120,9 @@ struct PwmChannel
         path += "_enable";
         auto f = ::open(path.c_str(), O_WRONLY);
         if(0 > f)
-            throw system_error(errno, system_category());
+            throw system_error(errno, system_category(), "open(" + std::string{path.c_str()} + ")");
         if(2 != ::write(f, "1", 2))
-            throw system_error(errno, system_category());
+            throw system_error(errno, system_category(), "write(" + std::string{path.c_str()} + ")");
         ::close(f);
     }
     void setPwmVal(int val)
@@ -152,6 +154,12 @@ struct Daemon
         , lastTemp(-1)
         , log()
     {
+        if(::geteuid())
+        {
+            std::cout << "Warning: Not starting as root"
+                      << ", it is likely that this will fail." 
+                      << std::endl;
+        }
         if(!vision)
             throw std::runtime_error("Could not find VISION device!");
         Log::info() << "Found device: " << vision->describe();
@@ -169,14 +177,20 @@ struct Daemon
         {
             throw std::runtime_error("Error: No PWM channels given.");
         }
-        //daemonize();
+        daemonize();
+    }
+
+    static void signal_handler(int signal)
+    {
+        Log::info() << "Caught signal " << ::strsignal(signal);
+        Daemon::exiting = true;
     }
 
     void daemonize()
     {
         pid_t child = ::fork();
         if(0 > child)
-            throw system_error(errno, system_category());
+            throw system_error(errno, system_category(), "fork()");
         if(child > 0)
             ::exit(0);
         ::umask(0);
@@ -184,6 +198,15 @@ struct Daemon
         ::close(0);
         ::close(1);
         ::close(2);
+        {
+            std::ofstream ofs("/var/run/pwmd.pid");
+            if(!ofs.good())
+                throw system_error(errno, system_category(), "open(/var/run/pwmd.pid)");
+            ofs << ::getpid() << std::endl;
+        }
+        ::signal(SIGHUP, &Daemon::signal_handler);
+        ::signal(SIGINT, &Daemon::signal_handler);
+        ::signal(SIGTERM, &Daemon::signal_handler);
     }
 
     ~Daemon()
@@ -215,13 +238,16 @@ struct Daemon
             }
             pause:
             ::sleep(1);
-        } while(true);
+        } while(!Daemon::exiting);
     }
+    static bool exiting;
     Vision* vision;
     double lastTemp;
     std::vector<std::shared_ptr<PwmChannel>> pwm_channels;
     Log log;
 };
+
+bool Daemon::exiting = false;
 
 
 auto main(int argc, char**argv) -> int
