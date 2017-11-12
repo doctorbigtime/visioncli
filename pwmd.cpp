@@ -65,8 +65,9 @@ struct PwmChannel
         if(temp > 42) return 255; //< full blast.
 
         // custom fit quadratic.
-        auto pwm_pct = 1.859406-0.4977863*temp+0.06597786*(std::pow(temp,2));
-        Log::debug() << "temp: " <<  temp << " -> pwm_pct: " << pwm_pct 
+        auto pwm_pct = std::min(100.0, 58.94545 - 7.49697*temp + 0.2020202*(std::pow(temp,2)));
+        //auto pwm_pct = 1.859406-0.4977863*temp+0.06597786*(std::pow(temp,2));
+        Log::debug() << "fan - temp: " <<  temp << " -> pwm_pct: " << pwm_pct 
                      << " pwm: " << static_cast<int>(pwm_pct * 2.55) ;
         return static_cast<int>(pwm_pct * 2.55);
     }
@@ -74,7 +75,10 @@ struct PwmChannel
     static int pump_curve(double temp)
     {
         if(temp < 35) return 76; //< always at least running 'silent'
-        return fan_curve(temp);
+        auto pwm_pct = std::min(100.0, 725.4167 - 43.92045*temp + 0.6912879*(std::pow(temp,2)));
+        Log::debug() << "pump - temp: " <<  temp << " -> pwm_pct: " << pwm_pct 
+                     << " pwm: " << static_cast<int>(pwm_pct * 2.55) ;
+        return static_cast<int>(pwm_pct * 2.55);
     }
 
     // TODO: parameterize
@@ -163,12 +167,17 @@ struct Daemon
         if(!vision)
             throw std::runtime_error("Could not find VISION device!");
         Log::info() << "Found device: " << vision->describe();
-        if(0 == argc % 2)
-            throw std::runtime_error("Expecting <pwm channel> <curve type>");
-        for(int arg = 1; arg < argc; arg += 2)
+        while(--argc)
         {
-            std::string channel = *++argv;
-            std::string type = *++argv;
+            std::string channel_type = *++argv;
+            std::string channel = channel_type;
+            std::string type = "fan";
+            auto equal = channel_type.find_first_of('=');
+            if(equal != std::string::npos)
+            {
+                type = channel_type.substr(equal+1);
+                channel = channel_type.substr(0, equal);
+            }
             pwm_channels.push_back(std::make_shared<PwmChannel>(channel, type));
             Log::info() << "Opened channel " << pwm_channels.back()->name
                 << " on FD: " << pwm_channels.back()->fd;

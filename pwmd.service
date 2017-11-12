@@ -4,7 +4,7 @@ After=lm-sensors.service
 Documentation=man:pwmd(8)
 
 [Service]
-ExecStart=/usr/sbin/pwmd pwm1 pump pwm2 fan
+ExecStart=/usr/sbin/pwmd pwm1=pump pwm2=fan
 PIDFile=/var/run/pwmd.pid
 
 [Install]
