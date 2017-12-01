@@ -36,6 +36,7 @@ struct Log
         template <typename T> \
         Name& operator<<(T const& t) { \
             os_ << t; \
+            return *this; \
         } \
         void operator<<(Log::EOM) { \
             flush(); \
@@ -139,7 +140,7 @@ struct PwmChannel
                 << ");";
             if(0 != ::lseek(fd, 0, SEEK_SET))
                 Log::error() << "Failed to seek to beginning of file on FD: " << fd << " - " << strerror(errno);
-            if(strval.size()+1 != ::write(fd, strval.c_str(), strval.size()+1))
+            if(strval.size()+1 != (unsigned int)::write(fd, strval.c_str(), strval.size()+1))
                 Log::error() << "Failed to write to FD: " << fd << " - " << strerror(errno);
         }
         lastVal = val;
@@ -203,7 +204,7 @@ struct Daemon
         if(child > 0)
             ::exit(0);
         ::umask(0);
-        ::chdir("/");
+        auto ret __attribute__((unused)) = ::chdir("/");
         ::close(0);
         ::close(1);
         ::close(2);
@@ -227,11 +228,9 @@ struct Daemon
     {
         do
         {
-            time_t now = ::time(nullptr);
             auto report = vision->getInputReport();
             auto ir = reinterpret_cast<InputReport_v1 const*>(&report->front());
             auto temp = ir->temp(4);
-            //Log::debug() << now << " - polled: " << temp;
             auto diff = temp - lastTemp;
             if(diff)
             {
@@ -245,7 +244,7 @@ struct Daemon
                     channel->setTemperature(temp);
                 lastTemp = temp;
             }
-            pause:
+            //pause:
             ::sleep(1);
         } while(!Daemon::exiting);
     }

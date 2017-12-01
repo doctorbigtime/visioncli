@@ -57,7 +57,7 @@ struct Dir
     void apply(Fun&& fun)
     {
         dirent* p;
-        while(p = ::readdir(dp))
+        while((p = ::readdir(dp)))
         {
             if(!fun(p->d_type, std::string{p->d_name}))
                 break;
@@ -68,7 +68,7 @@ struct Dir
 };
 
 
-#pragma push(pack, 1)
+#pragma pack(push, 1)
 struct InputReport_v1
 {
     char unknown_[0x34];
@@ -81,7 +81,7 @@ struct InputReport_v1
         return temps[index] / 100.0;
     }
 };
-#pragma pop(pack)
+#pragma pack(pop)
 
 
 struct Vision
@@ -124,7 +124,7 @@ struct Vision
 
     static Vision* findAndCreate()
     {
-        int fd;
+        int fd{-1};
         std::string devusb = "/dev/usb";
         Dir dir(devusb);
 
@@ -165,7 +165,7 @@ struct Vision
         check(::ioctl(fd_, HIDIOCGFIELDINFO, &finfo));
         b.push_back(rinfo.report_id);
 
-        for(auto j = 0; j < finfo.maxusage; ++j)
+        for(auto j = 0u; j < finfo.maxusage; ++j)
         {
             hiddev_usage_ref uref;
             std::memset(&uref, 0, sizeof(uref));

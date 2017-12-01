@@ -42,6 +42,8 @@ auto main(int argc, char**argv) -> int
     else std::cout << ir->temp(sensor_index) << std::endl;
 
     if(verbose)
-        ::write(2, &report->front(), report->size());
+    {
+        auto ret __attribute__((unused)) = ::write(2, &report->front(), report->size());
+    }
     return 0;
 }
