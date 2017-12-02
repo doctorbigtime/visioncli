@@ -30,5 +30,7 @@ AC_FUNC_ERROR_AT_LINE
 AC_FUNC_FORK
 AC_CHECK_FUNCS([memset pow strerror])
 
+AC_CONFIG_FILES([misc/pwmd.service])
+
 AC_OUTPUT
 AC_OUTPUT(Makefile src/Makefile misc/Makefile)
